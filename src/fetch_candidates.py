@@ -76,7 +76,7 @@ def get_news_from_api(api_key: str, keywords: List[str], max_results: int = 100)
                 "sortBy": "publishedAt",
             }
 
-            response = requests.get(base_url, params=params, timeout=10)
+            response = requests.get(base_url, params=params, timeout=10, verify=False)
             response.raise_for_status()  # Raise exception for bad status codes
 
             data = response.json()
@@ -128,7 +128,7 @@ def verify_url(url: str, timeout_seconds: int = 5) -> bool:
 
     try:
         # Send HEAD request (faster than GET, just checks headers)
-        response = requests.head(url, timeout=timeout_seconds, allow_redirects=True)
+        response = requests.head(url, timeout=timeout_seconds, allow_redirects=True, verify=False)
 
         # Return True for successful responses (2xx, 3xx status codes)
         # Return False for 404, 410, and other client/server errors
