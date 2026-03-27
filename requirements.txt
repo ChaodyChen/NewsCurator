@@ -1,0 +1,31 @@
+# API & Data Fetching
+newsapi==0.1.1
+requests==2.32.3
+
+# Google Drive integration
+google-auth-oauthlib>=1.2.0
+google-auth-httplib2>=0.2.0
+google-api-python-client>=2.100.0
+
+# LINE Bot SDK
+line-bot-sdk>=3.22.0
+
+# Web framework
+Flask>=3.0.0
+python-dotenv>=1.0.0
+
+# Email
+secure-smtplib
+
+# Data handling
+pandas>=2.0.0
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.0.0
+responses>=0.20.0
+
+# Development
+black>=24.0.0
+flake8>=7.0.0
