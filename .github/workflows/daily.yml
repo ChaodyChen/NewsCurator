@@ -31,6 +31,7 @@ jobs:
           echo "LINE_CHANNEL_SECRET=${{ secrets.LINE_CHANNEL_SECRET }}" >> $GITHUB_ENV
           echo "LINE_GROUP_ID=${{ secrets.LINE_GROUP_ID }}" >> $GITHUB_ENV
           echo "KEYWORD_LIST=${{ secrets.KEYWORD_LIST }}" >> $GITHUB_ENV
+          echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> $GITHUB_ENV
 
       - name: Write Google credentials file
         run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > news-curator-creds.json

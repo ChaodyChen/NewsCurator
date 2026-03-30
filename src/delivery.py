@@ -205,9 +205,12 @@ def format_line_message(top_stories: List[Dict]) -> str:
         emoji = emoji_list[idx - 1] if idx <= len(emoji_list) else f"{idx}."
         lines.append(f"{emoji} {title}")
         if snippet:
-            lines.append(snippet[:120])
+            lines.append(snippet)
         lines.append(url)
         lines.append("")
+
+    lines.append("---")
+    lines.append("EOSL Semiconductor Curation")
 
     return "\n".join(lines)
 

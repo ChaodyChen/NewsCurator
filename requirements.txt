@@ -17,8 +17,8 @@ python-dotenv>=1.0.0
 # Email
 secure-smtplib
 
-# Translation
-deep-translator>=1.11.0
+# Translation & Rewriting
+anthropic>=0.39.0
 
 # Data handling
 pandas>=2.0.0

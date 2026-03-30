@@ -18,6 +18,9 @@ class Config:
     # NewsAPI
     NEWSAPI_KEY = os.getenv('NEWSAPI_KEY')
 
+    # Anthropic (Claude API for article rewriting)
+    ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
+
     # Google Drive
     GOOGLE_APPLICATION_CREDENTIALS = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
     GOOGLE_DRIVE_FOLDER_ID = os.getenv('GOOGLE_DRIVE_FOLDER_ID')

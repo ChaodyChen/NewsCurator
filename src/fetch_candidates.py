@@ -10,6 +10,8 @@ Daily workflow:
 """
 
 import logging
+import os
+import json
 import requests
 import csv
 from datetime import datetime, timedelta
@@ -20,12 +22,11 @@ from src.config import Config
 logger = logging.getLogger(__name__)
 
 try:
-    from deep_translator import GoogleTranslator
-    _translator = GoogleTranslator(source='en', target='zh-TW')
-    TRANSLATOR_AVAILABLE = True
+    import anthropic
+    ANTHROPIC_AVAILABLE = True
 except ImportError:
-    TRANSLATOR_AVAILABLE = False
-    logger.warning("deep-translator not installed, skipping translation")
+    ANTHROPIC_AVAILABLE = False
+    logger.warning("anthropic SDK not installed, skipping Claude rewriting")
 
 
 class Article:
@@ -53,42 +54,88 @@ class Article:
         }
 
 
-def _translate_text(text: str) -> str:
-    """Translate English text to Traditional Chinese. Returns original on failure."""
-    if not text or not TRANSLATOR_AVAILABLE:
-        return text
-    try:
-        return _translator.translate(text)
-    except Exception as e:
-        logger.debug(f"Translation failed: {e}")
-        return text
+def rewrite_articles_with_claude(articles: List['Article'], api_key: str) -> List['Article']:
+    """
+    Rewrite article titles and snippets using Claude API.
 
+    Produces professional Traditional Chinese content with English technical terms preserved,
+    matching the EOSL weekly digest style.
 
-def _shorten_snippet(snippet: str, max_len: int = 120) -> str:
-    """Shorten snippet to max_len chars, ending at sentence boundary if possible."""
-    if not snippet or len(snippet) <= max_len:
-        return snippet or ""
-    # Try to cut at sentence boundary
-    for sep in ['。', '，', '. ', ', ']:
-        idx = snippet.rfind(sep, 0, max_len)
-        if idx > max_len // 2:
-            return snippet[:idx + len(sep)].rstrip()
-    return snippet[:max_len - 1] + '…'
+    Args:
+        articles: List of Article objects with English titles/snippets
+        api_key: Anthropic API key
 
-
-def translate_articles(articles: List['Article']) -> List['Article']:
-    """Translate title and snippet of all articles to Traditional Chinese."""
-    if not TRANSLATOR_AVAILABLE:
-        logger.warning("Translator not available, skipping translation step")
+    Returns:
+        Articles with rewritten title and snippet fields
+    """
+    if not ANTHROPIC_AVAILABLE:
+        logger.warning("anthropic SDK not available, skipping Claude rewriting")
         return articles
 
-    logger.info(f"Translating {len(articles)} articles to Traditional Chinese...")
-    for i, article in enumerate(articles):
-        article.title = _shorten_snippet(_translate_text(article.title), max_len=80)
-        article.snippet = _shorten_snippet(_translate_text(article.snippet), max_len=120)
-        if (i + 1) % 50 == 0:
-            logger.info(f"  Translated {i + 1}/{len(articles)}")
-    logger.info(f"Translation complete: {len(articles)} articles")
+    if not api_key:
+        logger.warning("No ANTHROPIC_API_KEY configured, skipping Claude rewriting")
+        return articles
+
+    client = anthropic.Anthropic(api_key=api_key)
+
+    # Batch articles into groups to reduce API calls
+    BATCH_SIZE = 10
+    for batch_start in range(0, len(articles), BATCH_SIZE):
+        batch = articles[batch_start:batch_start + BATCH_SIZE]
+
+        # Build batch prompt
+        articles_text = ""
+        for i, article in enumerate(batch):
+            articles_text += (
+                f"---Article {i+1}---\n"
+                f"Title: {article.title}\n"
+                f"Source: {article.source}\n"
+                f"Date: {article.published_at}\n"
+                f"Snippet: {article.snippet}\n\n"
+            )
+
+        prompt = f"""你是半導體產業專家編輯。請將以下英文新聞改寫為專業繁體中文摘要。
+
+規則：
+1. title: 用繁體中文改寫標題，保留英文技術專有名詞（如 Silicon Photonics, HBM4, Hybrid Bonding, EUV, TSMC, Samsung 等）。標題需具資訊性，不超過60字。
+2. snippet: 用繁體中文寫3-4句專業分析，包含：來源與日期、技術細節、產業影響或意義。保留關鍵英文術語。不超過200字。
+
+請以 JSON array 格式回覆，每個元素包含 "title" 和 "snippet" 欄位。順序與輸入相同。
+
+{articles_text}"""
+
+        try:
+            response = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=4000,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            # Parse JSON response
+            response_text = response.content[0].text.strip()
+            # Handle markdown code blocks
+            if response_text.startswith("```"):
+                response_text = response_text.split("\n", 1)[1]
+                response_text = response_text.rsplit("```", 1)[0].strip()
+
+            rewritten = json.loads(response_text)
+
+            for i, article in enumerate(batch):
+                if i < len(rewritten):
+                    article.title = rewritten[i].get("title", article.title)
+                    article.snippet = rewritten[i].get("snippet", article.snippet)
+
+            logger.info(f"Rewritten batch {batch_start//BATCH_SIZE + 1}: {len(batch)} articles")
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse Claude response as JSON: {e}")
+            logger.debug(f"Response text: {response_text[:500]}")
+        except anthropic.APIError as e:
+            logger.error(f"Claude API error: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error in Claude rewriting: {e}")
+
+    logger.info(f"Claude rewriting complete: {len(articles)} articles")
     return articles
 
 
@@ -374,9 +421,10 @@ def fetch_and_save(
         logger.warning("No articles after deduplication. Aborting.")
         return 0
 
-    # Step 5: Translate to Traditional Chinese
-    logger.info("Step 5: Translating to Traditional Chinese...")
-    articles = translate_articles(articles)
+    # Step 5: Rewrite to professional Traditional Chinese via Claude API
+    logger.info("Step 5: Rewriting articles via Claude API...")
+    anthropic_key = os.getenv('ANTHROPIC_API_KEY', '')
+    articles = rewrite_articles_with_claude(articles, anthropic_key)
 
     # Step 6: Save to CSV
     logger.info(f"Step 6: Saving {len(articles)} articles to {output_filepath}...")
