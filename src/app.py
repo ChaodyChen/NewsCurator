@@ -240,6 +240,68 @@ def submit_rankings():
         return jsonify({'error': 'Internal error', 'message': str(e)}), 500
 
 
+@app.route('/api/deliver', methods=['POST'])
+def trigger_delivery():
+    """
+    Trigger Monday delivery pipeline (LINE message).
+    Called by PythonAnywhere scheduled task.
+    """
+    try:
+        import glob
+        from src.delivery import deliver_news
+
+        # Git pull to get latest selections
+        repo_root = str(Path(__file__).parent.parent)
+        try:
+            subprocess.run(
+                ["git", "pull", "origin", "master"],
+                cwd=repo_root, capture_output=True, timeout=30
+            )
+            logger.info("Git pull complete before delivery")
+        except Exception as e:
+            logger.warning(f"Git pull failed: {e}")
+
+        # Find most recent files
+        selections_files = sorted(glob.glob('data/selections-*.csv'), reverse=True)
+        candidates_files = sorted(glob.glob('data/candidates-*.csv'), reverse=True)
+
+        if not selections_files:
+            return jsonify({'error': 'No selections CSV found'}), 404
+        if not candidates_files:
+            return jsonify({'error': 'No candidates CSV found'}), 404
+
+        # Build smtp_config
+        smtp_config = None
+        if Config.SMTP_USER and Config.SMTP_PASSWORD:
+            smtp_config = {
+                'smtp_server': Config.SMTP_SERVER,
+                'smtp_port': Config.SMTP_PORT,
+                'smtp_user': Config.SMTP_USER,
+                'smtp_password': Config.SMTP_PASSWORD,
+                'recipient': Config.FALLBACK_RECIPIENT_EMAIL,
+            }
+
+        result = deliver_news(
+            selections_filepath=selections_files[0],
+            all_candidates_filepath=candidates_files[0],
+            line_access_token=Config.LINE_CHANNEL_ACCESS_TOKEN,
+            line_group_id=Config.LINE_GROUP_ID,
+            smtp_config=smtp_config,
+        )
+
+        return jsonify({
+            'success': result.success,
+            'method': result.method,
+            'message': result.message,
+            'selections_file': selections_files[0],
+            'candidates_file': candidates_files[0],
+        }), 200 if result.success else 500
+
+    except Exception as e:
+        logger.error(f"Delivery error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check for monitoring."""
