@@ -89,10 +89,10 @@ def promote_reserve_story(
     dead_urls: set
 ) -> List[Dict]:
     """
-    Replace dead links with reserve stories (#6-7).
+    Replace dead links with reserve stories (3★).
 
     Args:
-        selected_stories: User's ranked stories (1-7)
+        selected_stories: User's rated stories (1-5 stars)
         all_candidates: All fetched candidates
         dead_urls: Set of URLs that are dead
 
@@ -100,15 +100,15 @@ def promote_reserve_story(
         List of 5 stories with dead ones replaced by reserves
 
     Logic:
-    - Keep stories 1-5 that have live links
-    - For each dead link in 1-5, promote next available from 6-7
+    - Keep stories 4★/5★ that have live links (top priority)
+    - For each dead link in 4★/5★, promote next available from 3★
     - Return exactly 5 stories with live links
     """
-    # Separate top 5 and reserves by rank
-    top_5 = sorted([s for s in selected_stories if s.get('rank') in ['1', '2', '3', '4', '5']],
-                   key=lambda s: int(s['rank']))
-    reserves = sorted([s for s in selected_stories if s.get('rank') in ['6', '7']],
-                      key=lambda s: int(s['rank']))
+    # Separate top (4-5 stars) and reserves (3 stars) by rank
+    top_5 = sorted([s for s in selected_stories if s.get('rank') in ['4', '5']],
+                   key=lambda s: -int(s['rank']))
+    reserves = sorted([s for s in selected_stories if s.get('rank') == '3'],
+                      key=lambda s: -int(s['rank']))
 
     # Start with all top 5 stories
     result = list(top_5)
@@ -195,44 +195,20 @@ def format_line_message(top_stories: List[Dict]) -> str:
         ""
     ]
 
-    # Emoji list for ranking
     emoji_list = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
 
-    # Store references for Google Drive (not included in message)
-    references = []
-
-    # Format each story
     for idx, story in enumerate(filtered_stories[:5], 1):
         title = story.get('title', 'Untitled')
         url = story.get('url', '')
-        source = story.get('source', 'Unknown')
-        published_at = story.get('published_at', '')
         snippet = story.get('snippet', '')
 
-        # Build story section with emoji number and title
         emoji = emoji_list[idx - 1] if idx <= len(emoji_list) else f"{idx}."
         lines.append(f"{emoji} {title}")
-
-        # Add fuller description content (use snippet or placeholder)
         if snippet:
-            # Keep more content (up to 500 chars) for better detail
-            description = snippet if len(snippet) <= 500 else snippet[:497] + "..."
-            lines.append(description)
-        else:
-            lines.append(f"（來自 {source}）")
-
+            lines.append(snippet[:120])
+        lines.append(url)
         lines.append("")
 
-        # Store reference for Google Drive
-        references.append({
-            'index': idx,
-            'title': title,
-            'url': url,
-            'source': source,
-            'date': published_at
-        })
-
-    # Return main message (references stored separately in Google Drive)
     return "\n".join(lines)
 
 
@@ -440,8 +416,8 @@ def deliver_news(
 
         # Step 2: Get top 5 and all ranked stories (for reserves)
         logger.info("Step 2: Extracting top stories...")
-        # Get top 7 (5 main + 2 reserves)
-        top_7 = get_top_n_ranked(selections, n=7)
+        # Get top 5 main stories (4★/5★) + reserves (3★)
+        top_5 = get_top_n_ranked(selections, n=5)
         top_5_for_verify = get_top_n_ranked(selections, n=5)
 
         if len(top_5_for_verify) < 5:
@@ -449,7 +425,7 @@ def deliver_news(
 
         # Step 3: Verify links final time
         logger.info("Step 3: Verifying links (final check)...")
-        verified_stories = verify_links_final(top_7, timeout_seconds=5)
+        verified_stories = verify_links_final(top_5, timeout_seconds=5)
 
         dead_urls = set(story['url'] for story, is_live in verified_stories if not is_live)
         logger.info(f"Found {len(dead_urls)} dead links")

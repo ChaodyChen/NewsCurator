@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Semiconductor News Curator</title>
+    <title>半導體新聞篩選</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
@@ -24,8 +24,10 @@
         .rank-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
         .rank-btn { padding: 8px 12px; border: 2px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; }
         .rank-btn:hover { border-color: #0099cc; }
-        .rank-btn.active { background: #0099cc; color: white; border-color: #0099cc; }
+        .rank-btn.active { background: #f59e0b; color: white; border-color: #f59e0b; }
         .rank-btn.skip { margin-left: auto; }
+        .star-btn { font-size: 18px; letter-spacing: 2px; padding: 6px 10px; color: #ccc; }
+        .star-btn.active { background: transparent; color: #f59e0b; border-color: #f59e0b; }
         .actions { display: flex; gap: 10px; margin-top: 30px; }
         .btn { padding: 12px 24px; border: none; border-radius: 4px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
         .btn-primary { background: #0099cc; color: white; }
@@ -39,29 +41,34 @@
         .loading { display: none; text-align: center; padding: 20px; }
         .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #0099cc; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .ml-badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 10px; margin-left: 8px; vertical-align: middle; }
+        .ml-badge.top5 { background: #fff3cd; color: #856404; border: 1px solid #ffc107; }
+        .ml-badge.cold { background: #f8f9fa; color: #6c757d; border: 1px solid #dee2e3; }
+        .ml-score-bar { height: 3px; background: #e9ecef; border-radius: 2px; margin: 6px 0 8px 0; }
+        .ml-score-fill { height: 100%; background: #ffc107; border-radius: 2px; transition: width 0.3s ease; }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Semiconductor News Curator</h1>
-            <p class="subtitle">Review and rank this week's candidates</p>
+            <h1>半導體新聞篩選</h1>
+            <p class="subtitle">審閱本週候選文章並評分</p>
             <div class="info-bar">
-                <span id="candidate-count"></span> | Rank your top 6-7 stories (or mark "skip")
+                <span id="candidate-count"></span> | 請對每篇文章評 1-3 顆星（或標記「跳過」），3 顆星最高
             </div>
         </header>
 
         <div class="loading">
             <div class="spinner"></div>
-            <p>Loading candidates...</p>
+            <p>載入候選文章中...</p>
         </div>
 
         <div id="content" style="display: none;">
             <div class="articles" id="articles-container"></div>
 
             <div class="actions">
-                <button class="btn btn-secondary" onclick="resetForm()">Reset</button>
-                <button class="btn btn-primary" onclick="submitRankings()">Save Rankings</button>
+                <button class="btn btn-secondary" onclick="resetForm()">重設</button>
+                <button class="btn btn-primary" onclick="submitRankings()">儲存評分</button>
             </div>
 
             <div id="status" class="status"></div>
@@ -71,6 +78,7 @@
     <script>
         let candidates = [];
         let previousSelections = {};
+        let mlSuggestions = {};
 
         document.addEventListener('DOMContentLoaded', () => {
             loadCandidates();
@@ -94,43 +102,87 @@
                         });
                     }
                     renderArticles();
+                    loadMlSuggestions();
                     document.querySelector('.loading').style.display = 'none';
                     document.getElementById('content').style.display = 'block';
                 })
                 .catch(err => {
-                    showStatus(`Error loading candidates: ${err.message}`, 'error');
+                    showStatus(`錯誤：${err.message}`, 'error');
                     document.querySelector('.loading').style.display = 'none';
                 });
+        }
+
+        function loadMlSuggestions() {
+            fetch('/api/ml-suggest')
+                .then(r => r.ok ? r.json() : {suggestions: []})
+                .then(data => {
+                    mlSuggestions = {};
+                    (data.suggestions || []).forEach(s => {
+                        mlSuggestions[s.url] = s;
+                    });
+                    applyMlBadges();
+                })
+                .catch(err => {
+                    console.log('ML 建議不可用:', err.message);
+                });
+        }
+
+        function applyMlBadges() {
+            Object.entries(mlSuggestions).forEach(([url, suggestion]) => {
+                const card = document.querySelector(`[data-article-url="${url}"]`);
+                if (card) {
+                    let badgeContainer = card.querySelector('.ml-badge-container');
+                    if (!badgeContainer) {
+                        badgeContainer = document.createElement('div');
+                        badgeContainer.className = 'ml-badge-container';
+                        const articleMeta = card.querySelector('.article-meta');
+                        if (articleMeta) {
+                            articleMeta.parentNode.insertBefore(badgeContainer, articleMeta.nextSibling);
+                        }
+                    }
+                    const badgeClass = suggestion.ml_label === 'top5' ? 'top5' : 'cold';
+                    const modeLabel = suggestion.ml_mode === 'cold_start' ? ' (關鍵字)' : '';
+                    badgeContainer.innerHTML = `
+                        <span class="ml-badge ${badgeClass}">
+                            AI: ${Math.round(suggestion.ml_score * 100)}%${modeLabel}
+                        </span>
+                        <div class="ml-score-bar">
+                            <div class="ml-score-fill" style="width: ${Math.round(suggestion.ml_score * 100)}%"></div>
+                        </div>
+                    `;
+                }
+            });
         }
 
         function renderArticles() {
             const container = document.getElementById('articles-container');
             const count = document.getElementById('candidate-count');
-            count.textContent = `${candidates.length} candidates`;
+            count.textContent = `${candidates.length} 篇候選文章`;
 
             container.innerHTML = candidates.map((article, idx) => {
                 const previousRank = previousSelections[article.url];
                 const hasRank = previousRank && previousRank !== 'skip';
                 return `
-                    <div class="article-card ${hasRank ? 'ranked' : ''}">
+                    <div class="article-card ${hasRank ? 'ranked' : ''}" data-article-url="${article.url}">
                         <div class="article-header">
                             <div>
                                 <div class="article-title">${article.title}</div>
                                 <div class="article-meta">
                                     <span class="article-source">${article.source}</span>
-                                    <span> • ${new Date(article.published_at).toLocaleDateString()}</span>
+                                    <span> • ${new Date(article.published_at).toLocaleDateString('zh-TW')}</span>
                                 </div>
                             </div>
                         </div>
-                        <div class="article-snippet">${article.snippet || '(no preview)'}</div>
+                        <div class="ml-badge-container"></div>
+                        <div class="article-snippet">${article.snippet || '（無預覽）'}</div>
                         <div class="rank-buttons">
-                            ${[1,2,3,4,5,6,7].map(r => `
-                                <button class="rank-btn" data-url="${article.url}" data-rank="${r}" onclick="selectRank(this, '${article.url}', '${r}')">
-                                    ${r}
+                            ${[3,2,1].map(stars => `
+                                <button class="rank-btn star-btn" data-url="${article.url}" data-rank="${stars}" onclick="selectRank(this, '${article.url}', '${stars}')" title="${stars}顆星">
+                                    ${'★'.repeat(stars)}${'☆'.repeat(3-stars)}
                                 </button>
                             `).join('')}
                             <button class="rank-btn skip" data-url="${article.url}" data-rank="skip" onclick="selectRank(this, '${article.url}', 'skip')">
-                                Skip
+                                跳過
                             </button>
                         </div>
                     </div>
@@ -145,20 +197,18 @@
         }
 
         function selectRank(button, url, rank) {
-            // Deselect other buttons for this article
             document.querySelectorAll(`[data-url="${url}"]`).forEach(btn => {
                 btn.classList.remove('active');
             });
             button.classList.add('active');
 
-            // Update card styling
             const card = button.closest('.article-card');
             card.classList.toggle('ranked', rank !== 'skip');
             card.classList.toggle('skipped', rank === 'skip');
         }
 
         function resetForm() {
-            if (confirm('Reset all rankings?')) {
+            if (confirm('確定要重設所有評分嗎？')) {
                 document.querySelectorAll('.rank-btn').forEach(btn => btn.classList.remove('active'));
                 document.querySelectorAll('.article-card').forEach(card => {
                     card.classList.remove('ranked', 'skipped');
@@ -182,13 +232,13 @@
                 }
             });
 
-            if (rankings.filter(r => r.rank !== 'skip').length < 6) {
-                showStatus('Please rank at least 6 stories', 'error');
+            if (rankings.filter(r => r.rank !== 'skip').length < 3) {
+                showStatus('請至少評分 3 篇文章', 'error');
                 return;
             }
 
             document.getElementById('status').style.display = 'block';
-            showStatus('Saving...', 'loading');
+            showStatus('儲存中...', 'loading');
 
             fetch('/api/rankings', {
                 method: 'POST',
@@ -200,11 +250,11 @@
                     return r.json();
                 })
                 .then(data => {
-                    showStatus(`Success! Saved ${data.num_ranked} ranked + ${data.num_skipped} skipped.`, 'success');
+                    showStatus(`儲存成功！已評分 ${data.num_ranked} 篇，跳過 ${data.num_skipped} 篇。`, 'success');
                     setTimeout(() => window.location.reload(), 2000);
                 })
                 .catch(err => {
-                    showStatus(`Error saving: ${err.message}`, 'error');
+                    showStatus(`儲存失敗：${err.message}`, 'error');
                 });
         }
 

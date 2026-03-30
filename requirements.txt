@@ -17,8 +17,16 @@ python-dotenv>=1.0.0
 # Email
 secure-smtplib
 
+# Translation
+deep-translator>=1.11.0
+
 # Data handling
 pandas>=2.0.0
+
+# Machine Learning
+scikit-learn>=1.4.0
+numpy>=1.26.0
+joblib>=1.3.0
 
 # Testing
 pytest>=7.0.0

@@ -24,16 +24,16 @@ class CurationSelection:
     """Represents a user's ranking of an article."""
 
     RANK_SKIP = "skip"
-    VALID_RANKS = {"1", "2", "3", "4", "5", "skip"}
+    VALID_RANKS = {"1", "2", "3", "skip"}
 
     def __init__(self, url: str, title: str, rank: str):
         self.url = url
         self.title = title
-        self.rank = rank  # "1"-"5" (stars) or "skip"
+        self.rank = rank  # "1"-"3" (stars) or "skip"
         self.timestamp = datetime.now(timezone.utc).isoformat()
 
         if rank not in self.VALID_RANKS:
-            raise ValueError(f"Invalid rank: {rank}. Must be 1-5 stars or 'skip'")
+            raise ValueError(f"Invalid rank: {rank}. Must be 1-3 stars or 'skip'")
 
     def to_dict(self) -> Dict:
         """Convert to dictionary for CSV storage."""
@@ -145,7 +145,7 @@ def validate_selections(selections: List[CurationSelection]) -> bool:
     Validate curation selections.
 
     Rules:
-    - At least 3 stories must be rated 1-5 stars (not all skipped)
+    - At least 3 stories must be rated 1-3 stars (not all skipped)
     - No duplicate URLs
     - All ranks must be in VALID_RANKS
 
@@ -162,7 +162,7 @@ def validate_selections(selections: List[CurationSelection]) -> bool:
     ranked = [s for s in selections if s.is_selected]
     if len(ranked) < 3:
         raise ValueError(
-            f"At least 3 stories must be rated (1-5 stars). "
+            f"At least 3 stories must be rated (1-3 stars). "
             f"Currently rated: {len(ranked)}"
         )
 
@@ -242,7 +242,7 @@ def get_top_n_ranked(selections: List[CurationSelection], n: int = 5) -> List[Di
     # Filter to only ranked stories (not "skip")
     ranked = [s for s in selections if s.is_selected]
 
-    # Sort by rank descending (5★ first, higher stars = better)
+    # Sort by rank descending (3★ first, higher stars = better)
     ranked_sorted = sorted(
         ranked,
         key=lambda s: -int(s.rank) if s.rank != "skip" else float('-inf')

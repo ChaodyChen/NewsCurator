@@ -19,6 +19,14 @@ from src.config import Config
 
 logger = logging.getLogger(__name__)
 
+try:
+    from deep_translator import GoogleTranslator
+    _translator = GoogleTranslator(source='en', target='zh-TW')
+    TRANSLATOR_AVAILABLE = True
+except ImportError:
+    TRANSLATOR_AVAILABLE = False
+    logger.warning("deep-translator not installed, skipping translation")
+
 
 class Article:
     """Represents a news article."""
@@ -43,6 +51,45 @@ class Article:
             'link_verified': self.link_verified,
             'fetch_timestamp': self.fetch_timestamp,
         }
+
+
+def _translate_text(text: str) -> str:
+    """Translate English text to Traditional Chinese. Returns original on failure."""
+    if not text or not TRANSLATOR_AVAILABLE:
+        return text
+    try:
+        return _translator.translate(text)
+    except Exception as e:
+        logger.debug(f"Translation failed: {e}")
+        return text
+
+
+def _shorten_snippet(snippet: str, max_len: int = 120) -> str:
+    """Shorten snippet to max_len chars, ending at sentence boundary if possible."""
+    if not snippet or len(snippet) <= max_len:
+        return snippet or ""
+    # Try to cut at sentence boundary
+    for sep in ['。', '，', '. ', ', ']:
+        idx = snippet.rfind(sep, 0, max_len)
+        if idx > max_len // 2:
+            return snippet[:idx + len(sep)].rstrip()
+    return snippet[:max_len - 1] + '…'
+
+
+def translate_articles(articles: List['Article']) -> List['Article']:
+    """Translate title and snippet of all articles to Traditional Chinese."""
+    if not TRANSLATOR_AVAILABLE:
+        logger.warning("Translator not available, skipping translation step")
+        return articles
+
+    logger.info(f"Translating {len(articles)} articles to Traditional Chinese...")
+    for i, article in enumerate(articles):
+        article.title = _shorten_snippet(_translate_text(article.title), max_len=80)
+        article.snippet = _shorten_snippet(_translate_text(article.snippet), max_len=120)
+        if (i + 1) % 50 == 0:
+            logger.info(f"  Translated {i + 1}/{len(articles)}")
+    logger.info(f"Translation complete: {len(articles)} articles")
+    return articles
 
 
 def get_news_from_api(api_key: str, keywords: List[str], max_results: int = 100) -> List[Article]:
@@ -327,8 +374,12 @@ def fetch_and_save(
         logger.warning("No articles after deduplication. Aborting.")
         return 0
 
-    # Step 5: Save to CSV
-    logger.info(f"Step 5: Saving {len(articles)} articles to {output_filepath}...")
+    # Step 5: Translate to Traditional Chinese
+    logger.info("Step 5: Translating to Traditional Chinese...")
+    articles = translate_articles(articles)
+
+    # Step 6: Save to CSV
+    logger.info(f"Step 6: Saving {len(articles)} articles to {output_filepath}...")
     save_to_csv(articles, output_filepath)
 
     # Step 6: CSV saved locally; git commit & push handles sharing via GitHub

@@ -265,9 +265,9 @@ def build_training_dataset(
             merged = candidates_df.copy()
             merged['rank'] = None
 
-        # Assign label: 1 if rank in {4,5} (top stars = good article), else 0
+        # Assign label: 1 if rank in {2,3} (top stars = good article), else 0
         merged['label'] = merged['rank'].apply(
-            lambda x: 1 if pd.notna(x) and str(x) in {'4', '5'} else 0
+            lambda x: 1 if pd.notna(x) and str(x) in {'2', '3'} else 0
         )
 
         # Drop the normalized URL column
