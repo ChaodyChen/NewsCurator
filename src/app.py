@@ -11,6 +11,7 @@ Routes:
 
 import logging
 import os
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify
@@ -121,6 +122,30 @@ def get_candidates_json():
         }), 500
 
 
+def _git_push_selections(filepath: str) -> bool:
+    """Commit and push selections CSV to GitHub so CCR can read it."""
+    try:
+        repo_root = str(Path(__file__).parent.parent)
+        run = lambda cmd: subprocess.run(
+            cmd, cwd=repo_root, capture_output=True, text=True, timeout=30
+        )
+        run(["git", "add", filepath])
+        result = run(["git", "diff", "--cached", "--quiet"])
+        if result.returncode == 0:
+            logger.info("No changes to push")
+            return True
+        run(["git", "commit", "-m", f"curation: {os.path.basename(filepath)}"])
+        push = run(["git", "push", "origin", "master"])
+        if push.returncode != 0:
+            logger.error(f"Git push failed: {push.stderr}")
+            return False
+        logger.info(f"Pushed {filepath} to GitHub")
+        return True
+    except Exception as e:
+        logger.error(f"Git push error: {e}")
+        return False
+
+
 @app.route('/api/rankings', methods=['POST'])
 def submit_rankings():
     """
@@ -194,6 +219,9 @@ def submit_rankings():
             logger.error(f"Failed to save selections: {e}")
             return jsonify({'error': 'Failed to save selections', 'message': str(e)}), 500
 
+        # Auto git commit & push so CCR can read selections
+        git_status = _git_push_selections(selections_file)
+
         # Calculate counts
         num_ranked = len([s for s in selections if s.is_selected])
         num_skipped = len(selections) - num_ranked
@@ -203,7 +231,8 @@ def submit_rankings():
             'message': 'Rankings saved',
             'num_ranked': num_ranked,
             'num_skipped': num_skipped,
-            'filepath': selections_file
+            'filepath': selections_file,
+            'git_pushed': git_status
         }), 200
 
     except Exception as e:
