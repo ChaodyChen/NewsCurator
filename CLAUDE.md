@@ -3,18 +3,18 @@
 ## Architecture Overview
 
 ```
-Anthropic Cloud (CCR) — Automated Fetch
-├── Trigger ID: trig_01Qf7UAouay2enJ4okAXEiqJ
-├── Schedule: Daily 7:45 AM Taipei time (UTC+8)
-└── Every day → fetch_candidates (NewsAPI → data/) → git push
+GitHub Actions — Automated Fetch + Delivery Trigger
+├── Workflow: .github/workflows/daily.yml
+├── Schedule: Daily 23:45 UTC (07:45 AM Taipei, UTC+8)
+├── Every day → fetch NewsAPI → data/candidates.csv → git push
+└── Monday → POST pythonanywhere.com/api/deliver → LINE 推播
 
 PythonAnywhere — Curation UI + Delivery
 ├── URL: https://chaody.pythonanywhere.com/curate
 ├── Serves Flask curation form (Fri–Sun)
 ├── git pull → reads candidates CSV from data/
 ├── Saves selections CSV to data/ → auto git push
-├── POST /api/deliver → Monday 8am delivery via LINE
-└── Scheduled Task: curl -X POST .../api/deliver (Mon 00:00 UTC = 8am Taipei)
+└── POST /api/deliver → git pull → LINE 推播
 
 GitHub (data/) — Shared Storage
 ├── data/candidates-YYYY-MM-DD.csv (written by CCR, read by PythonAnywhere)
