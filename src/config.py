@@ -52,6 +52,15 @@ class Config:
     URL_TIMEOUT_SECONDS = int(os.getenv('URL_TIMEOUT_SECONDS', 5))
     MAX_ARTICLE_AGE_HOURS = int(os.getenv('MAX_ARTICLE_AGE_HOURS', 48))
 
+    # ML settings (all optional with safe defaults)
+    ML_MIN_TRAINING_EXAMPLES = int(os.getenv('ML_MIN_TRAINING_EXAMPLES', 20))
+    ML_MODEL_PATH = os.getenv('ML_MODEL_PATH',
+        str(Path(__file__).parent.parent / 'models' / 'ranker.joblib'))
+    ML_CANDIDATES_DIR = os.getenv('ML_CANDIDATES_DIR',
+        str(Path(__file__).parent.parent / 'data'))
+    ML_SELECTIONS_DIR = os.getenv('ML_SELECTIONS_DIR',
+        str(Path(__file__).parent.parent / 'data'))
+
     @classmethod
     def validate(cls):
         """Validate required configuration is set."""

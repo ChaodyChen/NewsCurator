@@ -22,6 +22,7 @@ from src.curation_form import (
     save_selections_csv,
     CurationSelection,
 )
+from src.ml_ranker import predict as ml_predict, retrain as ml_retrain
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ def curate_form():
         if not candidates_file:
             # Default: today's candidates file
             today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-            candidates_file = f'candidates-{today}.csv'
+            candidates_file = f'data/candidates-{today}.csv'
 
         # For now, use a default path; in production this would be from Google Drive
         # This allows the form to be served even if candidates file doesn't exist
@@ -75,7 +76,7 @@ def get_candidates_json():
         if not candidates_file:
             # Default: today's candidates file
             today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-            candidates_file = f'candidates-{today}.csv'
+            candidates_file = f'data/candidates-{today}.csv'
 
         # Try to load candidates from default location
         # In production, this would read from Google Drive
@@ -93,7 +94,7 @@ def get_candidates_json():
         if not selections_file:
             # Default: today's selections file
             today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-            selections_file = f'selections-{today}.csv'
+            selections_file = f'data/selections-{today}.csv'
 
         previous_selections = []
         try:
@@ -184,7 +185,7 @@ def submit_rankings():
         if not selections_file:
             # Default: today's selections file
             today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-            selections_file = f'selections-{today}.csv'
+            selections_file = f'data/selections-{today}.csv'
 
         try:
             save_selections_csv(selections, selections_file)
@@ -214,6 +215,101 @@ def submit_rankings():
 def health_check():
     """Health check for monitoring."""
     return jsonify({'status': 'healthy'}), 200
+
+
+@app.route('/api/ml-suggest', methods=['GET'])
+def get_ml_suggestions():
+    """
+    Get ML-predicted scores for today's candidates.
+
+    Returns JSON:
+    {
+      "suggestions": [
+        {"url": "...", "ml_score": 0.82, "ml_label": "top5", "ml_mode": "model"},
+        ...
+      ],
+      "mode": "model" | "cold_start",
+      "model_exists": true | false
+    }
+
+    Always returns 200. On any error, returns empty suggestions list.
+    """
+    try:
+        candidates_file = request.args.get('file')
+        if not candidates_file:
+            today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+            candidates_file = f'data/candidates-{today}.csv'
+
+        try:
+            candidates = load_candidates_csv(candidates_file)
+        except FileNotFoundError:
+            candidates = []
+
+        if not candidates:
+            return jsonify({
+                'suggestions': [],
+                'mode': 'cold_start',
+                'model_exists': False
+            }), 200
+
+        # Get ML predictions
+        suggestions = ml_predict(candidates, Config.KEYWORDS)
+        mode = suggestions[0]['ml_mode'] if suggestions else 'cold_start'
+        model_exists = mode == 'model'
+
+        return jsonify({
+            'suggestions': suggestions,
+            'mode': mode,
+            'model_exists': model_exists,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting ML suggestions: {e}")
+        return jsonify({
+            'suggestions': [],
+            'mode': 'cold_start',
+            'model_exists': False
+        }), 200
+
+
+@app.route('/api/retrain', methods=['POST'])
+def trigger_retrain():
+    """
+    Trigger ML model retraining.
+
+    Called after each curation session to incorporate new selections into training data.
+
+    Returns JSON:
+    {
+      "success": true | false,
+      "mode": "trained" | "insufficient_data" | "error",
+      "n_samples": int,
+      "n_positive": int,
+      "model_path": str | null,
+      "error": str | null
+    }
+
+    Always returns 200.
+    """
+    try:
+        result = ml_retrain(
+            Config.ML_CANDIDATES_DIR,
+            Config.ML_SELECTIONS_DIR,
+            Config.KEYWORDS
+        )
+        logger.info(f"Retrain result: {result}")
+        return jsonify(result), 200
+
+    except Exception as e:
+        logger.error(f"Error triggering retrain: {e}")
+        return jsonify({
+            'success': False,
+            'mode': 'error',
+            'n_samples': 0,
+            'n_positive': 0,
+            'model_path': None,
+            'error': str(e)
+        }), 200
 
 
 @app.errorhandler(400)

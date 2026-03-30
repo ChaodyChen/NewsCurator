@@ -15,7 +15,6 @@ import csv
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from requests.exceptions import RequestException, Timeout
-from src.google_drive import upload_csv
 from src.config import Config
 
 logger = logging.getLogger(__name__)
@@ -332,15 +331,6 @@ def fetch_and_save(
     logger.info(f"Step 5: Saving {len(articles)} articles to {output_filepath}...")
     save_to_csv(articles, output_filepath)
 
-    # Step 6: Upload to Google Drive
-    try:
-        logger.info("Step 6: Uploading to Google Drive...")
-        filename = output_filepath.split('/')[-1]  # Extract filename from path
-        upload_csv(output_filepath, filename, Config.GOOGLE_DRIVE_FOLDER_ID)
-        logger.info(f"Uploaded {len(articles)} articles to Drive")
-    except Exception as e:
-        logger.error(f"Failed to upload to Drive (local CSV saved): {e}")
-        # Continue - local CSV is saved even if Drive upload fails
-
+    # Step 6: CSV saved locally; git commit & push handles sharing via GitHub
     logger.info(f"Daily fetch pipeline complete: {len(articles)} articles saved")
     return len(articles)
